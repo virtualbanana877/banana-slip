@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta property="og:type" content="website">
+<meta property="og:title" content="バーチャルのバナナの皮に耐えろ！">
+<meta property="og:description" content="降ってくるバナナの皮を避け続けろ！あなたの称号は？スマホで遊べる回避ゲーム">
+<meta property="og:url" content="https://virtualbanana877.github.io/banana-slip/">
+<meta property="og:image" content="https://virtualbanana877.github.io/banana-slip/ogp.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="バーチャルのバナナの皮に耐えろ！">
+<meta name="twitter:description" content="降ってくるバナナの皮を避け続けろ！あなたの称号は？">
+<meta name="twitter:image" content="https://virtualbanana877.github.io/banana-slip/ogp.png">
+<title>バーチャルのバナナの皮に耐えろ！</title>
+<style>
+:root{--bg:#ffe45c;--ink:#3b2a14;--panel:#fffaf0;--accent:#ff5a3c;--sub:#7a5a2a;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#2a2210;--ink:#fff3c4;--panel:#3d3217;--accent:#ff7a5c;--sub:#d9c27a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#2a2210;--ink:#fff3c4;--panel:#3d3217;--accent:#ff7a5c;--sub:#d9c27a;color-scheme:dark}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;font-weight:800;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#stage{position:fixed;inset:0}
+canvas{display:block;width:100%;height:100%}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}
+.hide{display:none!important}
+h1{margin:0;font-size:clamp(28px,9vw,44px);line-height:1.2;color:var(--ink);text-shadow:3px 3px 0 #fff8;transform:rotate(-3deg)}
+.sub{margin:0;font-size:15px;color:var(--sub);line-height:1.6}
+button{font:inherit;font-size:22px;color:#fff;background:var(--accent);border:4px solid var(--ink);border-radius:999px;padding:14px 38px;box-shadow:0 6px 0 var(--ink);cursor:pointer;touch-action:manipulation}
+button:active{transform:translateY(5px);box-shadow:0 1px 0 var(--ink)}
+button.alt{background:#1d9bf0}
+button.ghost{background:var(--panel);color:var(--ink);font-size:18px;padding:10px 28px}
+#result .card{background:var(--panel);border:4px solid var(--ink);border-radius:24px;padding:20px 18px;width:min(92%,380px);box-shadow:0 8px 0 var(--ink)}
+#rtime{font-size:64px;line-height:1;color:var(--accent)}
+#rtitle{font-size:28px;margin:10px 0 6px}
+#rdesc{font-size:15px;line-height:1.6;margin:0;color:var(--sub)}
+#rmeta{font-size:13px;margin-top:10px;color:var(--sub)}
+.row{display:flex;flex-direction:column;gap:12px;align-items:center}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="cv"></canvas></div>
+
+<div id="title" class="screen">
+  <h1>バーチャルの<br>バナナの皮に<br>耐えろ！</h1>
+  <p class="sub">降ってくる皮を避けて、できるだけ長く生き残れ。<br>画面の左右どちらかをタップして移動。<br>金色の皮は踏むと＋2.5秒！</p>
+  <button id="start">はじめる</button>
+</div>
+
+<div id="result" class="screen hide">
+  <div class="card">
+    <div class="sub">生き残った時間</div>
+    <div id="rtime">0.0秒</div>
+    <div id="rtitle"></div>
+    <p id="rdesc"></p>
+    <div id="rmeta"></div>
+  </div>
+  <div class="row">
+    <button id="again">もう一度遊ぶ</button>
+    <button id="share" class="alt">Xにシェア</button>
+  </div>
+</div>
+
+<script>
+(function(){
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const INK='#3b2a14',N=5,PI=Math.PI;
+let W=360,H=640,LW=72,PY=540,mode='title';
+function fit(){const d=Math.min(window.devicePixelRatio||1,2),w=innerWidth,h=innerHeight;cv.width=w*d;cv.height=h*d;const s=w/360;W=360;H=h/s;LW=W/N;PY=H-110;ctx.setTransform(d*s,0,0,d*s,0,0);}
+addEventListener('resize',fit);fit();
+const lx=i=>LW*(i+.5);
+const ease=p=>1-Math.pow(1-Math.min(Math.max(p,0),1),3);
+
+/* ---------- 音 ---------- */
+let ac=null;
+function initAudio(){if(!ac){try{ac=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(ac&&ac.state==='suspended')ac.resume();}
+function tone(f,d,type,vol,f2,delay){if(!ac)return;try{const t=ac.currentTime+(delay||0),o=ac.createOscillator(),g=ac.createGain();o.type=type||'square';o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(vol||.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+d);}catch(e){}}
+const sMove=()=>tone(520,.06,'square',.06,640);
+const sGold=()=>[660,880,1320].forEach((f,i)=>tone(f,.14,'triangle',.14,0,i*.07));
+const sSlip=()=>{tone(900,.55,'sawtooth',.1,120);};
+const sThud=()=>{tone(120,.25,'sine',.35,40);tone(80,.2,'square',.1,40);};
+
+/* ---------- 状態 ---------- */
+let lane=2,px=0,t=0,bonus=0,gold=0,peels=[],parts=[],texts=[],spawnT=0,shake=0,flash=0,scroll=0,best=0;
+let dead=null,rawT=0,idle=0;
+function reset(){lane=2;px=lx(2);t=0;bonus=0;gold=0;peels=[];parts=[];texts=[];spawnT=1.2;shake=0;flash=0;dead=null;
+  // 開始直後の洗礼: 最初の皮は初期位置の真上から1秒で到着
+  peels.push({lane:2,y:PY-spd(0)*1.0,gold:false,rot:Math.random()*6});}
+const spd=tt=>190+Math.min(tt,40)*7;
+function begin(){initAudio();reset();mode='play';document.getElementById('title').classList.add('hide');document.getElementById('result').classList.add('hide');}
+
+/* ---------- 入力 ---------- */
+document.getElementById('stage').addEventListener('pointerdown',e=>{
+  if(mode!=='play')return;e.preventDefault();initAudio();
+  const nl=e.clientX<innerWidth/2?lane-1:lane+1;
+  if(nl>=0&&nl<N){lane=nl;sMove();}
+});
+document.getElementById('start').onclick=begin;
+document.getElementById('again').onclick=begin;
+document.getElementById('share').onclick=()=>{
+  const sc=(t+bonus).toFixed(1),tt=document.getElementById('rtitle').textContent;
+  const txt='私は'+sc+'秒耐えました！称号：'+tt+' #バーチャルのバナナの皮に耐えろ';
+  let u='https://twitter.com/intent/tweet?text='+encodeURIComponent(txt);
+  if(/^https?:/.test(location.href))u+='&url='+encodeURIComponent(location.href);
+  window.open(u,'_blank');
+};
+
+/* ---------- 演出パーツ ---------- */
+function burst(x,y,n,cols,pw){for(let i=0;i<n;i++){const a=Math.random()*PI*2,v=(Math.random()*.6+.4)*(pw||260);parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-90,life:.7+Math.random()*.5,max:1.2,c:cols[i%cols.length],r:3+Math.random()*4,star:Math.random()<.5});}}
+function ftext(x,y,s,c,sz){texts.push({x,y,s,c,sz:sz||26,life:1.1});}
+
+/* ---------- 転倒 ---------- */
+const IMPACT=[.5,1.2,1.3,1.0,1.1];
+function die(){
+  rawT=t;const type=Math.floor(Math.random()*5);
+  dead={type,d:0,dir:Math.random()<.5?-1:1,hit:false,x0:px};
+  shake=14;sSlip();burst(px,PY,16,['#fff','#ffe04a','#ff9a3c'],240);
+  ftext(px,PY-90,['ツルッ！','あっ…','ぎゃー！','すってーん！','ひえっ！'][type],'#ff3c3c',34);
+  // 皮を足元へ
+  peels=peels.filter(p=>false);peels.push({lane,y:PY+16,gold:false,rot:.4,fixed:true,x:px});
+}
+function pose(){
+  const d=dead.d,ty=dead.type,dir=dead.dir,o={x:dead.x0,y:PY,rot:0,arm:2.4,leg:1,sy:1,dead:true};
+  const lie=dir*PI/2;
+  if(ty===0){const p=ease(d/.5);o.rot=lie*p*-1*-1;o.y=PY-Math.sin(Math.min(d/.5,1)*PI)*34+p*14;o.arm=2+Math.sin(d*18);o.leg=1.5;if(d>.5){o.y=PY+14-Math.max(0,Math.sin((d-.5)*9))*Math.exp(-(d-.5)*3)*18;}o.rot=lie*p;}
+  else if(ty===1){const p=Math.min(d/1.2,1);o.rot=lie+(1-ease(p))*PI*6*dir;o.y=PY-Math.sin(p*PI)*70+ease(p)*14;o.x=dead.x0+dir*40*ease(p);o.arm=2.8;o.leg=2.6;}
+  else if(ty===2){const p=ease(d/1.0);o.x=dead.x0+dir*Math.min(W*.3,(dead.dir>0?W-dead.x0-30:dead.x0-30))*p;o.rot=d<1?dir*-.5*Math.min(d*3,1):0;o.arm=2.6;o.leg=.6;if(d>=1){const q=ease((d-1)/.3);o.rot=dir*-.5+(lie+dir*.5)*q;o.y=PY+14*q;}}
+  else if(ty===3){if(d<.5){o.y=PY-90*ease(d/.5);o.rot=Math.sin(d*10)*.15;o.arm=3;o.leg=.4;}else if(d<.8){o.y=PY-90;o.rot=Math.sin(d*40)*.08;o.arm=3;o.leg=2.2;}else{const q=Math.min((d-.8)/.2,1);o.y=PY-90+104*q*q;o.rot=lie*q*2;o.arm=2.5;o.leg=1.4;if(q>=1){o.rot=lie;o.sy=1-Math.max(0,.3-(d-1)*1.5);o.y=PY+14;}}}
+  else{o.x=dead.x0+Math.sin(d*22)*10;o.rot=d<1.1?Math.sin(d*26)*.55:lie;o.arm=Math.PI*.5+Math.sin(d*30)*1.3;o.leg=.7+Math.sin(d*30+1.6)*1.1;o.y=PY-Math.abs(Math.sin(d*8))*20*(d<1.1?1:0)+(d>=1.1?14:0);}
+  return o;
+}
+
+/* ---------- 称号 ---------- */
+function judge(raw,s,g){
+  if(raw<2.0)return['生まれながらの滑り手','あなたは生まれた瞬間から皮の上にいました'];
+  if(s>=35)return['皮の帝王','あなたはもはやバナナの皮側の人間です'];
+  if(g>=2)return['金ピカ道化師','あなたは光るものに弱い残念な天才です'];
+  if(g===0&&s>=25)return['禁欲の聖人','あなたは金色の誘惑に勝つ強さを持っています'];
+  if(s>=25)return['スリップ破壊神','あなたは物理法則をバナナでねじ曲げています'];
+  if(s>=18)return['回避の鬼','あなたは「踏まないこと」に人生を賭けています'];
+  if(s>=12)return['そこそこ滑らない人','あなたは普通に滑る運命から少しだけ逃げています'];
+  if(s>=8)return['皮に愛されし者','あなたはバナナの皮に好かれる才能があります'];
+  if(s>=4)return['即ズッコケ体質','あなたは皮を踏むために生まれてきました'];
+  return['滑りすぎ伝説','あなたは皮を見ただけで人生が終了します'];
+}
+function showResult(){
+  const s=t+bonus,j=judge(rawT,s,gold);mode='result';
+  if(s>best)best=s;
+  document.getElementById('rtime').textContent=s.toFixed(1)+'秒';
+  document.getElementById('rtitle').textContent=j[0];
+  document.getElementById('rdesc').textContent=j[1];
+  document.getElementById('rmeta').textContent='金色の皮：'+gold+'回 ／ 今回のベスト：'+best.toFixed(1)+'秒';
+  document.getElementById('result').classList.remove('hide');
+}
+
+/* ---------- 更新 ---------- */
+function spawn(){
+  const cnt=t>26?3:t>12?2:1,ls=[0,1,2,3,4].sort(()=>Math.random()-.5).slice(0,cnt);
+  ls.forEach(l=>peels.push({lane:l,y:-30-Math.random()*50,gold:Math.random()<.0877,rot:Math.random()*6,spin:(Math.random()-.5)*3}));
+  spawnT=Math.max(.34,.85-t*.016)*(1+(cnt-1)*.7);
+}
+function update(dt){
+  idle+=dt;scroll+=dt*(mode==='play'?spd(t):120);
+  shake=Math.max(0,shake-dt*30);flash=Math.max(0,flash-dt*2.2);
+  px+=(lx(lane)-px)*Math.min(1,dt*18);
+  if(mode==='play'){
+    t+=dt;spawnT-=dt;if(spawnT<=0)spawn();
+    const v=spd(t);
+    for(const p of peels){p.y+=v*dt;p.rot+=(p.spin||0)*dt;
+      if(!dead&&p.lane===lane&&Math.abs(p.y-PY)<30){
+        if(p.gold){p.dead=1;bonus+=2.5;gold++;flash=1;sGold();burst(px,PY-20,34,['#ffd21f','#fff3a0','#fff','#ffb300'],360);ftext(px,PY-80,'+2.5秒！！','#e0a000',36);}
+        else{die();mode='dead';break;}
+      }
+    }
+    peels=peels.filter(p=>!p.dead&&p.y<H+40);
+  }else if(mode==='dead'){
+    dead.d+=dt;
+    if(!dead.hit&&dead.d>=IMPACT[dead.type]){dead.hit=true;shake=22;sThud();burst(pose().x,PY+20,22,['#fff','#ffe04a','#ffb3a0'],300);}
+    for(const p of peels)if(!p.fixed)p.y+=spd(t)*dt*.4;
+    if(dead.d>2.1)showResult();
+  }
+  for(const q of parts){q.life-=dt;q.vy+=620*dt;q.x+=q.vx*dt;q.y+=q.vy*dt;}
+  parts=parts.filter(q=>q.life>0);
+  for(const q of texts){q.life-=dt;q.y-=40*dt;}
+  texts=texts.filter(q=>q.life>0);
+}
+
+/* ---------- 描画 ---------- */
+function limb(x1,y1,x2,y2,c){ctx.strokeStyle=INK;ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.strokeStyle=c;ctx.lineWidth=4.5;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+function drawChar(x,y,o){
+  ctx.save();ctx.translate(x,y);ctx.rotate(o.rot||0);ctx.scale(1,o.sy||1);ctx.lineCap='round';ctx.lineJoin='round';
+  const a=o.arm||0,l=o.leg||0,skin='#ffd9b0';
+  limb(-8,12,-8-Math.sin(l)*11,12+Math.cos(l)*14,'#4a6cff');limb(8,12,8+Math.sin(l)*11,12+Math.cos(l)*14,'#4a6cff');
+  limb(-13,-6,-13-Math.sin(a)*13,-6+Math.cos(a)*13,skin);limb(13,-6,13+Math.sin(a)*13,-6+Math.cos(a)*13,skin);
+  ctx.fillStyle='#ff6b4a';ctx.strokeStyle=INK;ctx.lineWidth=3;ctx.beginPath();ctx.roundRect(-14,-12,28,28,9);ctx.fill();ctx.stroke();
+  ctx.fillStyle=skin;ctx.beginPath();ctx.arc(0,-36,27,0,PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#5a3a1e';ctx.beginPath();ctx.arc(0,-36,27,PI*1.04,PI*1.96);ctx.quadraticCurveTo(8,-52,-4,-60);ctx.quadraticCurveTo(-12,-50,-26,-40);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#ff9a9a66';ctx.beginPath();ctx.arc(-16,-27,5,0,PI*2);ctx.arc(16,-27,5,0,PI*2);ctx.fill();
+  ctx.strokeStyle=INK;ctx.fillStyle=INK;ctx.lineWidth=3;
+  if(o.dead){[-9,9].forEach(ex=>{ctx.beginPath();ctx.moveTo(ex-4,-38);ctx.lineTo(ex+4,-30);ctx.moveTo(ex+4,-38);ctx.lineTo(ex-4,-30);ctx.stroke();});ctx.beginPath();ctx.ellipse(0,-20,5,6,0,0,PI*2);ctx.fill();}
+  else{ctx.beginPath();ctx.arc(-9,-34,3.4,0,PI*2);ctx.arc(9,-34,3.4,0,PI*2);ctx.fill();ctx.beginPath();ctx.arc(0,-26,5,.2,PI-.2);ctx.stroke();}
+  ctx.restore();
+}
+function drawPeel(x,y,rot,g){
+  ctx.save();ctx.translate(x,y);ctx.rotate(rot);ctx.lineWidth=3;ctx.strokeStyle=g?'#a8740a':INK;
+  if(g){ctx.shadowColor='#ffd21f';ctx.shadowBlur=18+Math.sin(idle*10)*6;}
+  for(let i=0;i<3;i++){ctx.save();ctx.rotate(i*2.09);ctx.fillStyle=g?'#ffd21f':'#ffe04a';ctx.beginPath();ctx.ellipse(15,0,17,8,0,0,PI*2);ctx.fill();ctx.stroke();ctx.restore();}
+  ctx.shadowBlur=0;ctx.fillStyle=g?'#fff3a0':'#8a5a1e';ctx.beginPath();ctx.arc(0,0,5,0,PI*2);ctx.fill();ctx.stroke();
+  ctx.restore();
+}
+function drawBg(){
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#74d0ff');g.addColorStop(1,'#d9f6ff');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#ffffffaa';ctx.lineWidth=2;ctx.setLineDash([14,18]);ctx.lineDashOffset=-scroll;
+  for(let i=1;i<N;i++){ctx.beginPath();ctx.moveTo(LW*i,-10);ctx.lineTo(LW*i,H+10);ctx.stroke();}
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ffffff55';ctx.fillRect(0,PY+34,W,H-PY);
+  ctx.fillStyle='#00000018';ctx.beginPath();ctx.ellipse(px,PY+34,24,7,0,0,PI*2);ctx.fill();
+}
+function txt(s,x,y,sz,c,sc){ctx.font='900 '+sz+'px "Hiragino Maru Gothic ProN","Yu Gothic UI",sans-serif';ctx.textAlign='center';ctx.lineWidth=sz/5;ctx.strokeStyle=sc||'#fff';ctx.lineJoin='round';ctx.strokeText(s,x,y);ctx.fillStyle=c;ctx.fillText(s,x,y);}
+function draw(){
+  ctx.save();
+  if(shake>0)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+  drawBg();
+  for(const p of peels)drawPeel(p.fixed?p.x:lx(p.lane),p.y,p.rot,p.gold);
+  if(mode==='dead'){const o=pose();drawChar(o.x,o.y,o);}
+  else{const b=mode==='play'?0:Math.sin(idle*4)*3,run=mode==='play'?Math.sin(t*16):0;drawChar(px,PY+b,{rot:run*.06,arm:.5+run*.5,leg:.3+Math.abs(run)*.5});}
+  for(const q of parts){ctx.globalAlpha=Math.max(0,q.life/q.max);ctx.fillStyle=q.c;if(q.star){ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.life*8);ctx.fillRect(-q.r,-q.r,q.r*2,q.r*2);ctx.restore();}else{ctx.beginPath();ctx.arc(q.x,q.y,q.r,0,PI*2);ctx.fill();}}
+  ctx.globalAlpha=1;
+  for(const q of texts){ctx.globalAlpha=Math.min(1,q.life*2);txt(q.s,q.x,q.y,q.sz,q.c,'#fff');}
+  ctx.globalAlpha=1;
+  if(flash>0){ctx.fillStyle='rgba(255,225,80,'+(flash*.45)+')';ctx.fillRect(-20,-20,W+40,H+40);}
+  ctx.restore();
+  if(mode==='play'||mode==='dead'){
+    txt((mode==='dead'?t+bonus:t+bonus).toFixed(1)+'秒',W/2,64,44,'#3b2a14');
+    if(gold>0)txt('★ × '+gold,W/2,94,20,'#e0a000');
+  }
+}
+let last=performance.now();
+function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop);}
+px=lx(2);requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
